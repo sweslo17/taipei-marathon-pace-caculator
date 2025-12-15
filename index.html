@@ -395,7 +395,8 @@
         }
 
         .wristband {
-            width: 75mm;
+            /* 56mm width (approx 75% of previous 75mm) */
+            width: 56mm;
             box-sizing: border-box;
             border: 3px solid #000;
             font-family: "Arial Narrow", "Helvetica Condensed", "Helvetica", sans-serif;
@@ -549,36 +550,67 @@
                 size: auto; 
             }
 
-            html, body {
-                height: 100%;
-                margin: 0 !important;
-                padding: 0 !important;
-                overflow: hidden; 
-            }
-
-            body * {
-                visibility: hidden;
-            }
-
-            #wristbandPreview, #wristbandPreview * {
-                visibility: visible;
-            }
-
-            #wristbandPreview {
-                position: absolute;
-                left: 10mm;
-                top: 10mm;
-                width: auto;
-                height: auto;
+            body {
+                background-color: white;
                 margin: 0;
-                display: block; 
+                padding: 0;
+            }
+
+            /* Robust hiding technique: display: none takes elements out of flow completely */
+            header, 
+            .input-section, 
+            .map-section, 
+            .summary-box, 
+            #cardsContainer, 
+            .table-container,
+            .font-settings-container,
+            #resultArea > h2,
+            #resultArea > h3,
+            .print-area-wrapper > h3,
+            .print-area-wrapper > p,
+            .custom-text-inputs,
+            .print-controls,
+            .print-btn {
+                display: none !important;
+            }
+
+            .container {
+                width: 100%;
+                max-width: none;
+                margin: 0;
+                padding: 0;
+                box-shadow: none;
+                border: none;
+            }
+
+            #resultArea {
+                display: block !important;
+                margin: 0;
+                padding: 0;
+            }
+
+            .print-area-wrapper {
+                margin: 0;
+                padding: 0;
+                background: none !important;
+                border: none !important;
+                display: block !important;
+            }
+
+            /* Make sure the preview container is visible and flows naturally */
+            #wristbandPreview {
+                display: block !important;
+                margin: 10mm; /* Add margin to prevent cutting off at edge */
+                width: auto;
+                position: static; /* Let it flow naturally to avoid blank page issues */
             }
             
+            /* Ensure the wristband itself prints correctly */
             .wristband {
-                margin: 0;
-                page-break-inside: avoid;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+                page-break-inside: avoid;
+                margin: 0;
             }
         }
     </style>
@@ -588,7 +620,7 @@
 <div class="container">
     <header>
         <h1>🇹🇼 臺北馬拉松戰略配速</h1>
-        <p class="subtitle">基於風阻與地形的台北馬拉松完賽策略生成器</p>
+        <p class="subtitle">基於風阻與地形的台北馬拉松策略生成器</p>
     </header>
 
     <div class="input-section">
@@ -654,6 +686,10 @@
                     <input type="checkbox" id="checkTime" checked onchange="updateWristbandCols()">
                     時間 (Time)
                 </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="check25k" onchange="calculateStrategy()">
+                    每 2.5K 一行
+                </label>
             </div>
 
             <!-- Full Font Settings -->
@@ -688,7 +724,7 @@
                     <div class="font-control-item">
                         <label>分段 (Split)</label>
                         <div>
-                            <input type="range" id="fsSeg" min="6" max="14" value="9" oninput="updateAllFonts()">
+                            <input type="range" id="fsSeg" min="6" max="20" value="9" oninput="updateAllFonts()">
                             <span id="valSeg">9pt</span>
                         </div>
                     </div>
@@ -870,22 +906,8 @@
         const wbMantra = document.getElementById('wbMantra');
         const wbNote = document.getElementById('wbNote');
 
-        // Logic: if empty string, don't show. If placeholder value needed, check value.
-        // We use value directly. If user clears it, it should be empty.
-        // But user asked for "Start Slow. Finish Strong" as a default.
-        // We handle this by setting the default only if the INPUT is empty initially (on load).
-        // If user manually clears it, we can respect that or revert to default. 
-        // Let's implement logic: If value is empty string, hide element. 
-        // If user wants default, they can type it or we set it on load.
-        
-        // Actually the prompt says: "Start Slow... can be a default value for the field".
-        // It also says "Start Slow... is NOT required to print".
-        // So:
         if (mantraInput.value.trim() === "") {
-             wbMantra.innerText = "Start Slow. Finish Strong."; // Use as default placeholder text visually?
-             // Or should we hide it? "not necessarily printed". 
-             // Let's check if it's the INITIAL state or cleared state. 
-             // To be safe and flexible: If empty, show nothing.
+             wbMantra.innerText = "Start Slow. Finish Strong."; 
              wbMantra.style.display = 'none';
         } else {
              wbMantra.innerText = mantraInput.value;
@@ -990,7 +1012,19 @@
         let currentElapsedTime = 0;
         let lastWbTime = 0;
         
-        const checkPoints = [5, 10, 15, 20, 25, 30, 35, 40, 42.195];
+        // Determine checkpoints
+        let checkPoints = [];
+        const use25k = document.getElementById('check25k').checked;
+        
+        if (use25k) {
+            for (let d = 2.5; d < 42.195; d += 2.5) {
+                checkPoints.push(d);
+            }
+            checkPoints.push(42.195);
+        } else {
+            checkPoints = [5, 10, 15, 20, 25, 30, 35, 40, 42.195];
+        }
+        
         let nextCpIdx = 0;
 
         segments.forEach(seg => {
@@ -1029,8 +1063,11 @@
                 const wbRow = document.createElement('tr');
                 if (cp === 42.195) wbRow.className = 'wb-highlight';
                 
+                // Changed FINISH to FIN
+                const kmDisplay = cp === 42.195 ? 'FIN' : cp;
+                
                 wbRow.innerHTML = `
-                    <td class="wb-km">${cp === 42.195 ? 'FINISH' : cp}</td>
+                    <td class="wb-km">${kmDisplay}</td>
                     <td class="wb-phase">${seg.name}</td>
                     <td class="wb-pace">${secondsToPaceStr(finalPace)}</td>
                     <td class="wb-seg">${secondsToTimeStr(splitTime)}</td>
@@ -1050,7 +1087,6 @@
         
         // Initialize Mantra with default text logic
         const mantraInput = document.getElementById('mantraInput');
-        // Set the INPUT value to the default, so user sees it and can delete it.
         mantraInput.value = "Start Slow. Finish Strong."; 
         updateWristbandText();
         
