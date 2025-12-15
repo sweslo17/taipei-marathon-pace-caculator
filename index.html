@@ -51,6 +51,36 @@
             font-size: 0.95rem;
         }
 
+        /* Mode Switcher */
+        .mode-switch {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+            background: #e5e7eb;
+            padding: 5px;
+            border-radius: 999px;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .mode-btn {
+            padding: 10px 25px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 999px;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.2s ease;
+        }
+
+        .mode-btn.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
         .input-section {
             background: #eff6ff;
             padding: 1.5rem;
@@ -570,7 +600,8 @@
             .print-area-wrapper > p,
             .custom-text-inputs,
             .print-controls,
-            .print-btn {
+            .print-btn,
+            .mode-switch {
                 display: none !important;
             }
 
@@ -623,6 +654,12 @@
         <p class="subtitle">基於風阻與地形的台北馬拉松策略生成器</p>
     </header>
 
+    <!-- Mode Switcher -->
+    <div class="mode-switch">
+        <button class="mode-btn active" id="btnFull" onclick="switchMode('full')">全程馬拉松 (42K)</button>
+        <button class="mode-btn" id="btnHalf" onclick="switchMode('half')">半程馬拉松 (21K)</button>
+    </div>
+
     <div class="input-section">
         <label style="display:block; margin-bottom: 10px;">請輸入您的目標完賽時間 (HH:MM)</label>
         <div class="input-wrapper">
@@ -635,20 +672,20 @@
             </div>
             <button class="generate-btn" onclick="calculateStrategy()">生成策略</button>
         </div>
-        <p style="margin-top: 10px; font-size: 0.85rem; color: #666;">預設為 3 小時 29 分 (Sub 3:30 緩衝時間)</p>
+        <p style="margin-top: 10px; font-size: 0.85rem; color: #666;" id="defaultTimeText">預設為 3 小時 29 分 (Sub 3:30 緩衝時間)</p>
     </div>
 
     <!-- Map Section -->
     <div class="map-section">
         <h3>🗺️ 賽道立體路線圖</h3>
-        <img src="https://www.taipeicitymarathon.com/ck_imgs/%E7%AB%8B%E9%AB%94%E8%B7%AF%E7%B7%9A(%E5%85%A8%E7%A8%8B)_1111.jpg" alt="臺北馬拉松立體路線圖" loading="lazy">
+        <img id="courseMap" src="https://www.taipeicitymarathon.com/ck_imgs/%E7%AB%8B%E9%AB%94%E8%B7%AF%E7%B7%9A(%E5%85%A8%E7%A8%8B)_1111.jpg" alt="臺北馬拉松立體路線圖" loading="lazy">
     </div>
 
     <div id="resultArea">
         <div class="summary-box">
             <strong>🎯 策略總結：</strong> 目標平均配速為 <span id="avgPace" style="font-weight:bold; color:var(--primary)">--:--</span> /km。
             <br>
-            前段 (0-20k) 穩定儲蓄，中段 (20-26k) 環東抗風降速，後段 (30k+) 河濱順風追分。
+            <span id="strategySummary">前段 (0-20k) 穩定儲蓄，中段 (20-26k) 環東抗風降速，後段 (30k+) 河濱順風追分。</span>
         </div>
 
         <h2>📍 分段執行策略</h2>
@@ -775,7 +812,7 @@
                         </tbody>
                     </table>
                     <div class="wb-footer">
-                        GELS: 10k, 20k, 30k, 36k<br>
+                        <span id="wbGels">GELS: 10k, 20k, 30k, 36k</span><br>
                         <span id="wbMantra" class="wb-custom-text">Start Slow. Finish Strong.</span>
                         <span id="wbNote" class="wb-note-text"></span>
                     </div>
@@ -806,65 +843,71 @@
 </div>
 
 <script>
-    // Constants based on the strategy document
-    const STRATEGY_SEGMENTS = [
-        { 
-            endKm: 5, 
-            name: "城市暖機", 
-            type: "warmup", 
-            paceMod: 1.025, // Slower
-            desc: "人多擁擠，壓制腎上腺素。體感要覺得「太慢」。",
-            mantra: "「起跑慢不是損失，是投資。」"
+    let currentMode = 'full'; // 'full' or 'half'
+
+    // Strategy Configurations
+    const STRATEGY = {
+        full: {
+            dist: 42.195,
+            defaultH: 3,
+            defaultM: 29,
+            mapUrl: "https://www.taipeicitymarathon.com/ck_imgs/%E7%AB%8B%E9%AB%94%E8%B7%AF%E7%B7%9A(%E5%85%A8%E7%A8%8B)_1111.jpg",
+            gels: "GELS: 10k, 20k, 30k, 36k",
+            summary: "前段 (0-20k) 穩定儲蓄，中段 (20-26k) 環東抗風降速，後段 (30k+) 河濱順風追分。",
+            segments: [
+                { endKm: 5, name: "城市暖機", type: "warmup", paceMod: 1.025, desc: "人多擁擠，壓制腎上腺素。體感要覺得「太慢」。", mantra: "「起跑慢不是損失，是投資。」" },
+                { endKm: 10, name: "巡航模式", type: "normal", paceMod: 0.99, desc: "中山北路林蔭大道，吃第1包膠(10K)。累積時間本錢。", mantra: "「現在的輕鬆是為了30公里後的強悍。」" },
+                { endKm: 20, name: "穩定儲能", type: "normal", paceMod: 0.99, desc: "最舒服的路段。20K上環東前吃第2包膠(含咖啡因)。", mantra: "「專注當下，這一步，再一步。」" },
+                { endKm: 26, name: "環東抗風", type: "wind", paceMod: 1.06, desc: "關鍵生存點！強逆風+爬升。躲集團後，不要硬頂，允許掉速。", mantra: "「我是烏龜，我有殼保護。」" },
+                { endKm: 30, name: "轉換調整", type: "normal", paceMod: 1.00, desc: "下橋利用重力加速，調整呼吸。30K吃第3包膠。", mantra: "「釋放重力，讓地球推著我跑。」" },
+                { endKm: 36, name: "河濱追擊", type: "push", paceMod: 0.97, desc: "順風悶熱，追分黃金段。每個水站都要澆水降溫！", mantra: "「順風之神在推我，現在開始反攻。」" },
+                { endKm: 42.195, name: "意志決戰", type: "push", paceMod: 0.98, desc: "梭哈模式。塔悠路短坡後，全開。36K吃最後一包膠。", mantra: "「痛代表我還活著，上去就贏了。」" }
+            ]
         },
-        { 
-            endKm: 10, 
-            name: "巡航模式", 
-            type: "normal", 
-            paceMod: 0.99, // Slightly faster
-            desc: "中山北路林蔭大道，吃第1包膠(10K)。累積時間本錢。",
-            mantra: "「現在的輕鬆是為了30公里後的強悍。」"
-        },
-        { 
-            endKm: 20, 
-            name: "穩定儲能", 
-            type: "normal", 
-            paceMod: 0.99, // Slightly faster
-            desc: "最舒服的路段。20K上環東前吃第2包膠(含咖啡因)。",
-            mantra: "「專注當下，這一步，再一步。」"
-        },
-        { 
-            endKm: 26, 
-            name: "環東抗風", 
-            type: "wind", 
-            paceMod: 1.06, // Significantly slower (Wind + Uphill)
-            desc: "關鍵生存點！強逆風+爬升。躲集團後，不要硬頂，允許掉速。",
-            mantra: "「我是烏龜，我有殼保護。」"
-        },
-        { 
-            endKm: 30, 
-            name: "轉換調整", 
-            type: "normal", 
-            paceMod: 1.00, // Recovery
-            desc: "下橋利用重力加速，調整呼吸。30K吃第3包膠。",
-            mantra: "「釋放重力，讓地球推著我跑。」"
-        },
-        { 
-            endKm: 36, 
-            name: "河濱追擊", 
-            type: "push", 
-            paceMod: 0.97, // Fast (Tailwind)
-            desc: "順風悶熱，追分黃金段。每個水站都要澆水降溫！",
-            mantra: "「順風之神在推我，現在開始反攻。」"
-        },
-        { 
-            endKm: 42.195, 
-            name: "意志決戰", 
-            type: "push", 
-            paceMod: 0.98, // Fast (All out)
-            desc: "梭哈模式。塔悠路短坡後，全開。36K吃最後一包膠。",
-            mantra: "「痛代表我還活著，上去就贏了。」"
+        half: {
+            dist: 21.0975,
+            defaultH: 1,
+            defaultM: 45,
+            mapUrl: "https://www.taipeicitymarathon.com/ck_imgs/%E7%AB%8B%E9%AB%94%E8%B7%AF%E7%B7%9A(%E5%8D%8A%E7%A8%8B)_1111.jpg",
+            gels: "GELS: 7k, 14k (or 10k)",
+            summary: "前段暖機，中段河濱跟車抗風，麥帥橋頂住，下橋後順風梭哈。",
+            segments: [
+                { endKm: 5, name: "城市暖機", type: "warmup", paceMod: 1.025, desc: "起跑人潮擁擠，請壓制速度。前2K建議慢5-10秒。", mantra: "「起跑的克制：不預支後半程體能。」" },
+                { endKm: 10, name: "穩定節奏", type: "normal", paceMod: 1.00, desc: "中山北路至北安路。6K處中山橋有爬升，穩住功率不強求速度。", mantra: "「建立穩定節奏，準備迎接河濱。」" },
+                { endKm: 16, name: "河濱抗風", type: "wind", paceMod: 1.00, desc: "基隆河濱開闊段，面臨東北季風。尋找集團「跟車」節省體力。", mantra: "「河濱的韌性：跟車抗風，維持專注。」" },
+                { endKm: 18, name: "決勝高點", type: "wind", paceMod: 1.06, desc: "麥帥二橋/環東高架。全場最難關卡，允許掉速，保留腿力。", mantra: "「高架的智慧：過了這裡就是下坡。」" },
+                { endKm: 21.0975, name: "順風衝刺", type: "push", paceMod: 0.96, desc: "下橋接南京東路，順風段。全開衝刺，鎖定遠方目標。", mantra: "「終局衝刺：毫無保留，直抵終點！」" }
+            ]
         }
-    ];
+    };
+
+    function switchMode(mode) {
+        currentMode = mode;
+        const config = STRATEGY[mode];
+
+        // UI Updates
+        document.getElementById('btnFull').className = mode === 'full' ? 'mode-btn active' : 'mode-btn';
+        document.getElementById('btnHalf').className = mode === 'half' ? 'mode-btn active' : 'mode-btn';
+        
+        // Update Defaults
+        document.getElementById('targetHours').value = config.defaultH;
+        document.getElementById('targetMinutes').value = config.defaultM;
+        document.getElementById('defaultTimeText').innerText = `預設為 ${config.defaultH} 小時 ${config.defaultM} 分`;
+        
+        // Map & Summary
+        document.getElementById('courseMap').src = config.mapUrl;
+        document.getElementById('strategySummary').innerText = config.summary;
+        document.getElementById('wbGels').innerText = config.gels;
+
+        // Auto-check 2.5km for Half Marathon
+        if (mode === 'half') {
+            document.getElementById('check25k').checked = true;
+        } else {
+            document.getElementById('check25k').checked = false; // Optional: reset for full
+        }
+
+        calculateStrategy();
+    }
 
     function secondsToTimeStr(totalSec) {
         const roundedTotal = Math.round(totalSec);
@@ -898,7 +941,6 @@
         showTime ? wb.classList.remove('no-time') : wb.classList.add('no-time');
     }
 
-    // Updated Function to update custom text
     function updateWristbandText() {
         const mantraInput = document.getElementById('mantraInput');
         const noteInput = document.getElementById('noteInput');
@@ -927,7 +969,6 @@
         grid.classList.toggle('show');
     }
     
-    // Unified Font Updater
     function updateAllFonts() {
         const fsKm = document.getElementById('fsKm').value;
         const fsPhase = document.getElementById('fsPhase').value;
@@ -937,7 +978,6 @@
         const fsMantra = document.getElementById('fsMantra').value;
         const fsNote = document.getElementById('fsNote').value;
 
-        // Update displays
         document.getElementById('valKm').innerText = fsKm + 'pt';
         document.getElementById('valPhase').innerText = fsPhase + 'pt';
         document.getElementById('valPace').innerText = fsPace + 'pt';
@@ -946,25 +986,20 @@
         document.getElementById('valMantra').innerText = fsMantra + 'pt';
         document.getElementById('valNote').innerText = fsNote + 'pt';
 
-        // Apply to Elements
         const wb = document.getElementById('wristband');
-        
-        // KM
         wb.querySelectorAll('.wb-km').forEach(el => el.style.fontSize = fsKm + 'pt');
-        // Phase
         wb.querySelectorAll('.wb-phase').forEach(el => el.style.fontSize = fsPhase + 'pt');
-        // Pace
         wb.querySelectorAll('.wb-pace').forEach(el => el.style.fontSize = fsPace + 'pt');
-        // Split
         wb.querySelectorAll('.wb-seg').forEach(el => el.style.fontSize = fsSeg + 'pt');
-        // Time
         wb.querySelectorAll('.wb-time').forEach(el => el.style.fontSize = fsTime + 'pt');
-        // Footer texts
         document.getElementById('wbMantra').style.fontSize = fsMantra + 'pt';
         document.getElementById('wbNote').style.fontSize = fsNote + 'pt';
     }
 
     function calculateStrategy() {
+        const config = STRATEGY[currentMode];
+        const segmentsConfig = config.segments;
+        
         const hInput = document.getElementById('targetHours');
         const mInput = document.getElementById('targetMinutes');
         
@@ -974,16 +1009,17 @@
         if (h === 0 && m === 0) return;
 
         const totalTargetSeconds = (h * 3600) + (m * 60);
-        const avgPaceSeconds = totalTargetSeconds / 42.195;
+        const avgPaceSeconds = totalTargetSeconds / config.dist;
 
         const timeDisplayStr = `${h}:${m.toString().padStart(2, '0')}`;
 
         document.getElementById('avgPace').textContent = secondsToPaceStr(avgPaceSeconds);
         document.getElementById('wbGoalTime').textContent = timeDisplayStr;
 
+        // Calculate Raw Time
         let rawTotalTime = 0;
         let prevKm = 0;
-        let segments = STRATEGY_SEGMENTS.map(seg => {
+        let segments = segmentsConfig.map(seg => {
             const dist = seg.endKm - prevKm;
             const rawPace = avgPaceSeconds * seg.paceMod;
             const time = rawPace * dist;
@@ -1015,14 +1051,20 @@
         // Determine checkpoints
         let checkPoints = [];
         const use25k = document.getElementById('check25k').checked;
+        const DIST = config.dist;
         
         if (use25k) {
-            for (let d = 2.5; d < 42.195; d += 2.5) {
+            for (let d = 2.5; d < DIST; d += 2.5) {
                 checkPoints.push(d);
             }
-            checkPoints.push(42.195);
+            checkPoints.push(DIST);
         } else {
-            checkPoints = [5, 10, 15, 20, 25, 30, 35, 40, 42.195];
+            // Standard 5k splits for full, maybe modify for half default?
+            // Keep 5k logic but cap at distance
+            for (let d = 5; d < DIST; d += 5) {
+                checkPoints.push(d);
+            }
+            checkPoints.push(DIST);
         }
         
         let nextCpIdx = 0;
@@ -1031,6 +1073,7 @@
             const finalPace = seg.rawPace * correctionRatio;
             const segTime = finalPace * seg.dist;
             
+            // Render Card
             const card = document.createElement('div');
             card.className = `card ${seg.type}`;
             card.innerHTML = `
@@ -1043,6 +1086,7 @@
             `;
             cardsContainer.appendChild(card);
 
+            // Render Detail Row
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${seg.startKm} - ${seg.endKm} km</td>
@@ -1053,6 +1097,7 @@
             `;
             detailBody.appendChild(row);
 
+            // Render Wristband Row
             while (nextCpIdx < checkPoints.length && checkPoints[nextCpIdx] <= seg.endKm) {
                 const cp = checkPoints[nextCpIdx];
                 const distInSeg = cp - seg.startKm;
@@ -1061,10 +1106,10 @@
                 const splitTime = timeAtCp - lastWbTime;
                 
                 const wbRow = document.createElement('tr');
-                if (cp === 42.195) wbRow.className = 'wb-highlight';
+                if (cp === DIST) wbRow.className = 'wb-highlight';
                 
                 // Changed FINISH to FIN
-                const kmDisplay = cp === 42.195 ? 'FIN' : cp;
+                const kmDisplay = cp === DIST ? 'FIN' : cp;
                 
                 wbRow.innerHTML = `
                     <td class="wb-km">${kmDisplay}</td>
@@ -1084,16 +1129,18 @@
 
         document.getElementById('resultArea').style.display = 'block';
         updateWristbandCols();
-        
-        // Initialize Mantra with default text logic
-        const mantraInput = document.getElementById('mantraInput');
-        mantraInput.value = "Start Slow. Finish Strong."; 
         updateWristbandText();
-        
-        updateAllFonts(); // Init all font sizes
+        updateAllFonts(); 
     }
 
-    calculateStrategy();
+    // Init with Full marathon by default
+    // Or call calculateStrategy() directly, but switchMode sets up defaults
+    // Manually init text inputs since switchMode doesn't touch them if they are edited
+    const mantraInput = document.getElementById('mantraInput');
+    mantraInput.value = "Start Slow. Finish Strong."; 
+    
+    // Default to Full
+    switchMode('full');
 </script>
 
 </body>
